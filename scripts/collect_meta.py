@@ -7,14 +7,14 @@ import json
 import os
 import sys
 
-# 复用 zdf-shared 的认证和 API 客户端
+# 复用 hb-shared 的认证和 API 客户端
 SHARED_SCRIPTS = os.path.join(
     os.path.dirname(__file__),
-    "..", "..", "zdf-shared", "huoban-automation", "scripts",
+    "..", "..", "hb-shared", "huoban-automation", "scripts",
 )
 sys.path.insert(0, os.path.abspath(SHARED_SCRIPTS))
 
-from common import load_merged_config  # noqa: E402
+from common import ENV_KEYS, load_config_from_env  # noqa: E402
 from client import (  # noqa: E402
     list_tables,
     get_table_fields,
@@ -111,7 +111,6 @@ def collect_automation_detail(cfg, automation_id):
 
 
 def main():
-    profile = _arg("--profile")
     space_id_str = _arg("--space")
     output_path = _arg("--output") or "meta_output.json"
     detail = "--detail" in sys.argv
@@ -119,12 +118,16 @@ def main():
     table_filter = _arg("--tables")
     filter_names = [n.strip() for n in table_filter.split(",")] if table_filter else []
 
-    shared_config = os.path.join(os.path.abspath(SHARED_SCRIPTS), "config.json")
-    cfg = load_merged_config(shared_config, profile=profile)
+    cfg = load_config_from_env()
+    missing = [env_key for env_key, cfg_key in ENV_KEYS.items()
+               if cfg_key != "default_space_id" and not cfg.get(cfg_key)]
+    if missing:
+        print(f"[ERR] missing environment variables: {', '.join(missing)}", file=sys.stderr)
+        sys.exit(1)
 
     space_id = int(space_id_str) if space_id_str else int(cfg.get("default_space_id", 0))
     if not space_id:
-        print("[ERR] no space_id provided and no default_space_id in config")
+        print("[ERR] no space_id provided and HB_DEFAULT_SPACE_ID is not set", file=sys.stderr)
         sys.exit(1)
 
     # 1. 拉取所有表

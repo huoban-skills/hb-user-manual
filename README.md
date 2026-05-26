@@ -46,4 +46,4 @@ git clone https://github.com/huoban-skills/hb-user-manual.git ~/.claude/skills/h
 - `SKILL.md`：Skill 主说明文件，包含触发规则、流程和执行约束。
 - `references/writing-guide.md`：使用手册写作规范。
 - `scripts/collect_meta.py`：元数据采集脚本。
-
+- `scripts/vendor/huoban_automation/`：内置的最小 Huoban automation API 客户端，供采集脚本独立运行。

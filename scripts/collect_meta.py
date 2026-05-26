@@ -7,12 +7,12 @@ import json
 import os
 import sys
 
-# 复用 hb-shared 的认证和 API 客户端
-SHARED_SCRIPTS = os.path.join(
+# 内置最小 Huoban automation API 客户端，保证不安装 hb-automation 也能运行备用采集脚本。
+VENDOR_SCRIPTS = os.path.join(
     os.path.dirname(__file__),
-    "..", "..", "hb-shared", "huoban-automation", "scripts",
+    "vendor", "huoban_automation",
 )
-sys.path.insert(0, os.path.abspath(SHARED_SCRIPTS))
+sys.path.insert(0, os.path.abspath(VENDOR_SCRIPTS))
 
 from common import ENV_KEYS, load_config_from_env  # noqa: E402
 from client import (  # noqa: E402

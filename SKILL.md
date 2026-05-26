@@ -95,7 +95,7 @@ python3 scripts/collect_meta.py --tables "表1,表2,..." --detail --output <path
 ## 数据采集优先级
 
 1. **优先走 hac CLI** — 表结构用 `hac table get-table`，自动化用 `hac automation get`，表清单用 `hac table list-tables`
-2. **hac 不可用时（认证失败/未安装），退回 `scripts/collect_meta.py`** — 复用 `hb-shared/huoban-automation` 的环境变量认证批量采集
+2. **hac 不可用时（认证失败/未安装），退回 `scripts/collect_meta.py`** — 使用本 skill 内置的 Huoban automation API 客户端，读取环境变量认证后批量采集
 3. **以上都不通，再考虑其他 hb/huoban 类 skill**（hb-button、hb-call、hb-data-trigger、huoban-table 等）逐表手动采集
 
 不要跳过 hac 直接用备选方案。每次采集前先试一下 `hac table list-tables`，能跑通就用 hac。

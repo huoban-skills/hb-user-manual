@@ -20,7 +20,7 @@
 本 Skill 按四个阶段执行：
 
 1. 确定范围：先获取表清单，让用户确认纳入手册的表和顺序。
-2. 批量采集元数据：采集字段结构、关联关系和自动化配置。
+2. 批量采集元数据：采集字段结构、关联关系、自动化配置、审批流程（流程中心）、表单布局和打印模板等。
 3. 按模板生成文档：依据写作规范生成面向业务人员的 Markdown 手册。
 4. 用户确认后同步飞书：用户确认本地 Markdown 后，再创建或更新飞书文档。
 
@@ -30,6 +30,11 @@
 - 关键节点等用户确认。
 - 面向业务人员写作，不写技术文档。
 - 字段结构、关联关系、自动化规则优先通过 CLI 或 API 采集。
+
+## 依赖
+
+- [hac（huoban-app-cli）](https://www.npmjs.com/package/huoban-app-cli)：表结构、表单布局、审批流程的主采集通道。
+- `scripts/` 内置 Python 客户端：按表枚举自动化清单（hac 暂无此能力），以及 hac 不可用时的兜底采集。
 
 ## 安装
 
@@ -44,6 +49,7 @@ git clone https://github.com/huoban-skills/hb-user-manual.git ~/.claude/skills/h
 ## 文件
 
 - `SKILL.md`：Skill 主说明文件，包含触发规则、流程和执行约束。
+- `CHANGELOG.md`：版本变更记录。
 - `references/writing-guide.md`：使用手册写作规范。
 - `scripts/collect_meta.py`：元数据采集脚本。
 - `scripts/vendor/huoban_automation/`：内置的最小 Huoban automation API 客户端，供采集脚本独立运行。

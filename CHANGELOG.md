@@ -1,0 +1,34 @@
+# Changelog
+
+## 2026-06-10
+
+### 数据采集：从单一脚本升级为 hac CLI 为主的混合方案
+
+- **表结构采集切换到 hac CLI**：表清单用 `hac table list-tables`、字段结构用 `hac table get-table`（修正了旧文档中错误的参数名，统一为 `--space-id` / `--table-id`）。
+- **明确 hac 的能力边界**：实测确认 hac 的 automation 模块（0.26.1）只有 create / update / verify / get，没有"按表列出自动化"的命令，且 `get-table` 完整输出不含自动化 ID 和名称。因此自动化清单仍由内置 `scripts/collect_meta.py`（layout API + `HB_*` 环境变量认证）采集，此脚本不可删除。
+- **更新兜底 skill 引用**：过时的 hb-button / hb-call / hb-data-trigger 替换为现行的 huoban-table / huoban-automation / huoban-workspace + hb-automation-design。
+
+### 新增审批流程（流程中心）采集与写作规范
+
+- 采集：`hac procedures list-procedures` 按工作区枚举流程定义（含启用状态和绑定表）；审批环节链通过已完成样例实例的执行日志还原（`list-processes` + `list-process-logs`），`user_task` 为人工审批环节、`workflow_task` 为审批联动的自动处理。
+- 限制说明：hac 无"流程定义节点图"命令（`get-run-nodes` 返回 501），分支流程需多取样例对比，无已完成实例时标 `[待补充]`。
+- 写作规范：审批作为业务动作的环节写进对应章节（不单开大章），写清触发时机、审批环节、通过/驳回后的系统行为；审批人写岗位不写姓名；未启用的流程不写。
+
+### 新增表单布局、打印模板等深层配置采集
+
+- **表单布局** `hac table form-layout get`：主区字段实际排列顺序（字段表照此排序）、详情页标签页清单（子表/字段分组，`is_show: false` 的不写）。
+- **get-table 完整配置提取项扩充**（`--format json --output-mode full`）：
+  - 打印模板（`print_templates`）：手册写"可打印XX"
+  - 单据标题规则（`item_title`）
+  - 字段显示条件（`field_view_conditions`）："选择XX后才会出现"
+  - 计算字段公式（`config.script.code`，带中文字段名可直读）
+  - 自动编号规则（`config.compose`：前缀 + 日期格式 + 流水位数 + 重置周期）
+  - 子表默认值（`config.default_setting`）
+  - 数值字段单位/百分比/取值范围（`unit_suffix` / `is_percent` / `range`）
+
+### 写作模板（writing-guide.md）优化
+
+- **规则分组**：原 21 条混排的通用规则拆为"章节组织"和"字段表写法"两组，审批流程独立成组。
+- **新增混合模块结构规则**：既有资料表又有业务流程的模块（如库存管理），以业务流程结构为主、资料表集中放第一章；资料表少且简单时可并入业务章节。
+- **新增字段表写作规则**：计算字段用业务语言解释计算逻辑（不贴公式原文）、自动编号写清单号构成、默认值标注"无需修改"类提示、显示条件写清出现前提。
+- **新增章节组织规则**：主单据章节交代详情页标签页、有打印模板时提一句可打印什么。

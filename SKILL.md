@@ -36,11 +36,44 @@ metadata:
 对确认范围内的每张表采集：
 - 字段结构（名称、类型、必填、选项值、关联目标表）
 - 自动化列表（按钮、数据触发、校验规则等）
+- 审批流程（流程中心绑定到表上的流程定义和审批环节）
+- 表单布局（主区字段排列、详情页标签页/子表清单）
+- 打印模板、单据标题规则、字段显示条件（来自 get-table 完整配置）
 
-采集脚本：`scripts/collect_meta.py`
+表结构采集（hac CLI 优先）：
+```bash
+hac table list-tables --space-id <space_id>            # 表清单
+hac table get-table --table-id <table_id>              # 字段结构（含选项值、关联目标表）
+hac automation get --automation-id <automation_id>     # 单条自动化的节点详情（已知 ID 时）
+hac table form-layout get --table-id <table_id>        # 表单布局：主区字段排列 + 详情页标签页清单
+```
+- `form-layout get` 的 `main_layout` 是表单主区字段的实际排列顺序，字段表按这个顺序写；`tabs.items` 是详情页的标签页清单（`sub_table` 子表 / `sub_area` 字段分组），`is_show: false` 的不写进手册。
+- 完整配置要补充信息时用 `hac --format json --output-mode full table get-table`（默认精简模式最多展示 30 个字段），从中提取：
+  - `print_templates`：打印模板名称（如"销售合同打印"），手册写"可打印XX"；`status` 非启用的不写。
+  - `item_title`：单据标题由哪个字段生成（即列表里每条记录显示的名字）。
+  - `field_view_conditions`：字段显示条件（满足某条件才显示某些字段），非空时要写进字段说明（"选择XX后才会出现"）。
+  - 字段 `config.script.code`：计算字段的公式（带中文字段名，可直接读懂），用来在字段表里解释"这个值是怎么算出来的"；普通字段的 `config.script` 非空时是默认值规则。
+  - `auto_number` 字段的 `config.compose`：自动编号规则（前缀 + 日期格式 + 流水位数，`cycle` 是流水重置周期），手册写清单号构成。
+  - `sub_table` 字段的 `config.default_setting`：从本表发起新建子表记录时自动填的默认值（如"从订单发起退货入库，入库类型默认为退货入库"）。
+  - 数值/金额字段的 `unit_suffix`（单位）、`is_percent`（百分比）、`range`（取值范围），写进字段说明。
+
+审批流程采集（hac procedures，流程中心）：
+```bash
+hac procedures list-procedures --space-id <space_id>        # 工作区全部流程定义（名称、启用状态、绑定表）
+hac procedures list-processes --procedure-id <id> --status agreed --limit 3   # 找已走完的样例实例
+hac procedures list-process-logs --process-id <id>          # 从样例实例日志还原审批环节链
+```
+- `list-procedures` 按 `table_id` 把流程对应到确认范围内的表；`status: disable` 的流程不写进手册（或标注"当前未启用"）。
+- hac 没有"流程定义节点图"命令（`get-run-nodes` 不可用），审批环节只能从**已完成实例的执行日志**还原：`user_task` 是人工审批环节，`workflow_task` 是审批联动的自动处理（如"采购状态=待入库"）。
+- 单个实例只能还原它实际走过的路径；如果流程有条件分支，多取几个样例实例对比，仍不确定就标 `[待确认]` 问用户。
+- 表上没有已完成实例时，环节信息无法采集，标 `[待补充]` 让用户口述。
+
+自动化清单采集（hac 没有"按表列出自动化"的命令，必须用内置脚本）：
 ```bash
 python3 scripts/collect_meta.py --tables "表1,表2,..." --detail --output <path>.json
 ```
+该脚本一次性产出字段结构 + 自动化清单 + 节点详情，依赖 `HB_*` 环境变量认证。
+如果环境变量已配好，也可以直接全程用它；hac 命令适合补查单表或单条自动化。
 
 采集完展示摘要（每张表的字段数、关联关系、自动化），让用户确认是否完整。
 
@@ -94,11 +127,12 @@ python3 scripts/collect_meta.py --tables "表1,表2,..." --detail --output <path
 
 ## 数据采集优先级
 
-1. **优先走 hac CLI** — 表结构用 `hac table get-table`，自动化用 `hac automation get`，表清单用 `hac table list-tables`
-2. **hac 不可用时（认证失败/未安装），退回 `scripts/collect_meta.py`** — 使用本 skill 内置的 Huoban automation API 客户端，读取环境变量认证后批量采集
-3. **以上都不通，再考虑其他 hb/huoban 类 skill**（hb-button、hb-call、hb-data-trigger、huoban-table 等）逐表手动采集
+1. **表清单 / 字段结构 / 审批流程优先走 hac CLI** — `hac table list-tables`、`hac table get-table`；单条自动化详情用 `hac automation get`；审批流程用 `hac procedures list-procedures / list-processes / list-process-logs`（Python 脚本不覆盖流程中心，审批只有 hac 这一条路）
+2. **自动化清单（按表枚举）只能走 `scripts/collect_meta.py`** — hac 的 automation 模块只有 create/update/verify/get，没有 list 命令；脚本使用内置 Huoban API 客户端，读取 `HB_*` 环境变量认证
+3. **hac 认证失败/未安装时，全程退回 `scripts/collect_meta.py`** — 它同时覆盖表清单、字段结构和自动化采集
+4. **以上都不通，再考虑其他 huoban 类 skill**（`huoban-table`、`huoban-automation`、`huoban-workspace`，配合 `hb-automation-design` 分析自动化逻辑）逐表手动采集
 
-不要跳过 hac 直接用备选方案。每次采集前先试一下 `hac table list-tables`，能跑通就用 hac。
+每次采集前先试一下 `hac table list-tables`，能跑通就让 hac 承担表结构部分。
 
 ## CLI 使用铁律
 

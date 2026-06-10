@@ -68,14 +68,24 @@ hac procedures list-process-logs --process-id <id>          # 从样例实例日
 - 单个实例只能还原它实际走过的路径；如果流程有条件分支，多取几个样例实例对比，仍不确定就标 `[待确认]` 问用户。
 - 表上没有已完成实例时，环节信息无法采集，标 `[待补充]` 让用户口述。
 
-自动化清单采集（hac 没有"按表列出自动化"的命令，必须用内置脚本）：
+自动化采集分两段：**先批量出清单（看骨架），再对重点逐条取详情（看逻辑）**。不要只跑第一段就动笔——清单只能告诉你"有这么个按钮/触发"，写不出"点了之后系统到底做了什么"。
+
+**第一段——批量出清单**（hac 没有"按表列出自动化"的命令，必须用内置脚本）：
 ```bash
 python3 scripts/collect_meta.py --tables "表1,表2,..." --detail --output <path>.json
 ```
-该脚本一次性产出字段结构 + 自动化清单 + 节点详情，依赖 `HB_*` 环境变量认证。
-如果环境变量已配好，也可以直接全程用它；hac 命令适合补查单表或单条自动化。
+脚本一次产出字段结构 + 每张表的自动化清单，依赖 `HB_*` 环境变量认证。
+注意：脚本里的 `--detail` 只保留节点骨架（节点类型、名称、跨表写到哪张表），**不含触发条件、字段映射、写入的值、条件分支**——这些是手册要写的关键逻辑，必须靠第二段补。
 
-采集完展示摘要（每张表的字段数、关联关系、自动化），让用户确认是否完整。
+**第二段——对重点自动化逐条取完整详情**：
+```bash
+hac automation get --automation-id <automation_id>     # 单条自动化的完整节点配置
+```
+- 不必逐条全查，只深查**影响业务状态或用户能感知**的自动化：业务人员会点的按钮、改单据状态/库存/金额的数据触发、发通知或起审批的触发。纯内部技术性的（如同步缓存、刷冗余字段）可略过。
+- `hac automation get` 返回完整节点配置：触发条件、每个节点写/改了哪些字段、值怎么算、条件分支。看不懂业务含义时，配合 `hb-automation-design` skill 把这条自动化的逻辑翻译成业务语言，再写进手册（如"点「确认收货」后，系统把入库状态改成已入库，并按收货数量回写库存"）。
+- 节点配置里有不确定的业务判断，标 `[待确认]` 问用户，不要猜。
+
+采集完展示摘要（每张表的字段数、关联关系、自动化清单 + 已深查的重点自动化逻辑），让用户确认是否完整。
 
 ### 阶段三：按模板生成文档
 
@@ -128,7 +138,7 @@ python3 scripts/collect_meta.py --tables "表1,表2,..." --detail --output <path
 ## 数据采集优先级
 
 1. **表清单 / 字段结构 / 审批流程优先走 hac CLI** — `hac table list-tables`、`hac table get-table`；单条自动化详情用 `hac automation get`；审批流程用 `hac procedures list-procedures / list-processes / list-process-logs`（Python 脚本不覆盖流程中心，审批只有 hac 这一条路）
-2. **自动化清单（按表枚举）只能走 `scripts/collect_meta.py`** — hac 的 automation 模块只有 create/update/verify/get，没有 list 命令；脚本使用内置 Huoban API 客户端，读取 `HB_*` 环境变量认证
+2. **自动化采集两段式** — 第一段「按表列清单」只能走 `scripts/collect_meta.py`（hac 的 automation 模块只有 create/update/verify/get，没有 list 命令；脚本读 `HB_*` 环境变量认证，只产出节点骨架）；第二段「重点自动化取完整逻辑」走 `hac automation get --automation-id`，配合 `hb-automation-design` 翻译成业务语言。光有第一段写不出"按钮点完发生了什么"
 3. **hac 认证失败/未安装时，全程退回 `scripts/collect_meta.py`** — 它同时覆盖表清单、字段结构和自动化采集
 4. **以上都不通，再考虑其他 huoban 类 skill**（`huoban-table`、`huoban-automation`、`huoban-workspace`，配合 `hb-automation-design` 分析自动化逻辑）逐表手动采集
 

@@ -14,7 +14,7 @@ metadata:
 
 ## 核心原则
 
-1. **双轨采集**：hac 管逻辑真相（字段配置、自动化逻辑、审批流），浏览器管界面真相（真实截图、交互细节、提示文案）。二者冲突时以界面实测为准，并在实测笔记里标记。伙伴云以外的部分（外部平台、纯平台功能）没有 hac 兜底，以用户提供 + 界面实测为准，拿不准标 `[待确认]`。
+1. **双轨采集**：hac 管逻辑真相，负责字段配置、自动化逻辑、审批流；浏览器管界面真相，负责真实截图、交互细节、提示文案。二者冲突时以界面实测为准，并在实测笔记里标记。外部平台和纯平台功能没有 hac 兜底，以用户提供加界面实测为准，拿不准标 `[待确认]`。
 2. **按需采集，省 token**：能用一条命令批量落盘的不逐表查；只对写进文档的内容深查配置，不拿全量配置层。
 3. **分阶段交互**：范围和骨架让用户确认后再动手；生成后交用户审阅。
 4. **面向业务人员写作**：写作规范见 [references/writing-guide.md](references/writing-guide.md)，与截图配合的走查规范见 [references/walkthrough-guide.md](references/walkthrough-guide.md)。
@@ -44,9 +44,9 @@ metadata:
 1. **需求对齐**，跟用户问清：写什么（模块 / 场景清单）、给谁看、**演示环境**在哪个工作区/账号。演示环境由用户提供搭好的，本 skill 不负责搭建；场景和流程也只能来自用户，不替用户发明。
 2. **现状盘点**：涉及工作区就 `hac table list-tables --space-id <space_id>` 拉表清单，展示给用户确认哪些纳入、哪些排除；确认后 `hac table +resolve-id --table <表名>` 解析成纯数字 table_id 列对照表。不落在任何工作区的内容（纯平台功能、外部平台）记下来，没有元数据可盘。
 3. **定文档骨架，让用户确认后才动手**。结构单元只有一种：章节（骨架见 writing-guide「整体结构」），一个章节讲一个业务动作或场景：
-   - 多个章节（成熟工作区的模块）→ 套册头成册：判定模块类型（基础资料/业务流程/混合），标出主单据/明细/资料表，划业务闭环，给一版章节清单。
-   - 单个章节（单一操作、平台功能、跨平台打通）→ 直接成篇，不写册头；多个独立场景就是多篇，列文档清单（篇名 + 一句话范围）。
-   - 骨架里把**可选件说清让用户定**：章节内的字段说明、审批说明；册级的「通用操作」章（正文前）、「典型业务场景」章（册末，跨章场景连播）。
+   - 内容够多个章节（成熟工作区的模块）就套册头成册：判定模块类型（基础资料 / 业务流程 / 混合），标出主单据、明细表、资料表，划业务闭环，给一版章节清单。
+   - 只有单个章节（单一操作、平台功能、跨平台打通）就直接成篇，不写册头；多个独立场景就是多篇，列出文档清单，每篇给篇名和一句话范围。
+   - 骨架里把**可选件说清让用户定**：章节内的字段说明、审批说明；册级的「通用操作」章（放正文前）和「典型业务场景」章（放册末，跨章场景连播）。
 
 ### 阶段二：轻采集（全部落盘，不进上下文）
 
@@ -62,7 +62,12 @@ hac procedures list-procedures --space-id <space_id> > <采集目录>/procedures
 wc -c <采集目录>/*.json
 ```
 
-**采多少由骨架决定，不一律跑全套**：要写字段表的表跑全套四条；只需核对演示环境搭了什么的，跑 `er-diagram-collect` + 涉及表的 `automation list` 即可；要讲表单填写才补 `form-layout`，要讲审批才补 `procedures`；内容不落在任何工作区的，记一句"无可采集的工作区"直接进阶段三。
+**采多少由骨架决定，不一律跑全套**：
+
+- 要写字段表的表，四条命令全跑。
+- 只需核对演示环境搭了什么的，跑 `er-diagram-collect` 加涉及表的 `automation list`。
+- 要讲表单填写才补 `form-layout`，要讲审批才补 `procedures`。
+- 内容不落在任何工作区的，记一句"无可采集的工作区"，直接进阶段三。
 
 然后逐章跑摘要脚本，拿紧凑摘要包（一张 40 字段的表约 1.5k token）：
 
@@ -74,7 +79,7 @@ python3 scripts/digest.py --dir <采集目录> --tables "本章的表,逗号分�
 
 ### 阶段三：逐章/逐篇循环（深查 → 走查 → 写作）
 
-按阶段一确认的骨架推进，成册的逐章、单篇的逐篇，每个单元一个闭环，避免预付费采集和上下文堆积：
+按阶段一确认的骨架推进，成册的逐章、单篇的逐篇，每个单元一个闭环：
 
 1. **读本单元摘要包**（digest.py 输出；无可采集工作区的单元跳过）。
 2. **按需深查**，只查本单元要写的内容：
@@ -83,12 +88,8 @@ python3 scripts/digest.py --dir <采集目录> --tables "本章的表,逗号分�
    - 审批流（procedures.json 里绑定到本单元表的启用流程）：`hac procedures get-procedure --procedure-id <id>` 拿版本 → `hac procedures get-procedure-version` 直读流程图环节。
    - 零散配置（计算公式、自动编号规则、字段显示条件、打印模板）：仅对需要向读者解释的字段跑 `hac --output-mode full table get-table --table-id <id>` / `hac table list-print-templates --table-id <id>` 提取。
    - 字段类型名以 `hac table field-config list-types` 为准，不凭印象写。
-3. **浏览器走查 + 截图**，按 [references/walkthrough-guide.md](references/walkthrough-guide.md)：
-   - 从摘要包（或用户提供的流程）推导本单元**截图点位清单**，列出来再动手。
-   - `scripts/browser.py` 循环：goto → snapshot 确认 → 操作 → snapshot 验证 → shot。不盲截。
-   - 截图存 `<产出目录>/images/`，命名 `<章节号>-<序号>-<短说明>.png`；界面观察记 `notes.md`。
-   - 需要落数据就创建，标题带「演示-」前缀并登记 `demo-data.md`。
-4. **写本单元 Markdown**：规范全按 [references/writing-guide.md](references/writing-guide.md)（含配图规范）。图片用相对路径 `![图 1-1：说明](images/1-1-xxx.png)`，图注写在 alt 位置；图放进它对应的步骤条目里（列表项下缩进 4 空格），任何编辑器打开都能看到图。
+3. **浏览器走查 + 截图**，全按 [references/walkthrough-guide.md](references/walkthrough-guide.md) 执行：先从摘要包推导本单元的截图点位清单，再按「看 → 动 → 看 → 截」循环走查。截图存 `<产出目录>/images/`，界面观察记 `notes.md`，落的演示数据登记 `demo-data.md`。
+4. **写本单元 Markdown**：规范全按 [references/writing-guide.md](references/writing-guide.md)，含配图规范。图放进它对应的步骤条目里（列表项下缩进 4 空格），用相对路径引用。
 
 一个单元写完再进下一个；上一单元的深查 JSON 和走查细节不带进下一单元上下文。
 
@@ -142,7 +143,7 @@ python3 scripts/digest.py --dir <采集目录> --tables "表名A,表名B"   # �
 1. `table_id` / `space_id` 必须纯数字，需要 ID 先 `hac table +resolve-id`。
 2. 执行 hac 禁止 `2>&1`：stdout 是数据，stderr 是 token 统计。
 3. 认证失败（401/403）→ 停止任务，告知用户检查认证配置。
-4. 浏览器操作报"连不上浏览器"→ 重新 `start`；页面内容对不上 → 先 `snapshot` 再决定，不盲点。
+4. 浏览器操作报"连不上浏览器"时重新 `start`；页面内容和预期对不上时先 `snapshot` 看清现状再决定，不盲点。
 
 ## 输出规范
 

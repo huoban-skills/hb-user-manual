@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -31,7 +32,20 @@ from pathlib import Path
 PORT = 9333
 PROFILE = Path.home() / ".hb-manual-profile"
 STATE = PROFILE / "driver-state.json"
-WIDTH, HEIGHT = 1440, 960
+# 窗口默认最大化，自适应当前屏幕（--start-maximized），截图尺寸即最大化后的窗口尺寸。
+# 屏幕本身偏小、内容仍被压到屏幕外时，用 HB_WIN=宽x高 强制放大渲染视口（窗口不变，
+# 页面按指定尺寸布局并截图），例如 HB_WIN=2560x1440。
+# 真实窗口小于这个尺寸才做放大兜底。定得过高会把页面强行撑大再塞进小窗口，
+# 屏幕上看着变形、且每条命令都覆盖一次手动调整的窗口，观感来回横跳。
+# 1440×800 是「笔记本满屏」的常见下限，达到即不干预（Retina 下截图已有 2880 像素宽）。
+MIN_W, MIN_H = 1440, 800
+WIDTH = HEIGHT = 0
+_win = os.environ.get("HB_WIN", "")
+if "x" in _win:
+    try:
+        WIDTH, HEIGHT = (int(v) for v in _win.lower().split("x", 1))
+    except ValueError:
+        WIDTH = HEIGHT = 0
 
 # 逐个渲染过的文本节点取文：innerText 在某些弹层（如自动化编辑器）会整块漏掉
 TEXT_JS = """
@@ -96,10 +110,39 @@ def cmd_start(args):
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     for _ in range(40):
         if cdp_alive():
+            fit_window_to_screen()
             print(f"浏览器已启动（profile: {PROFILE}）。若尚未登录伙伴云，请让用户在窗口中完成登录。")
             return
         time.sleep(0.5)
     sys.exit("浏览器启动失败：CDP 端口未就绪")
+
+
+def fit_window_to_screen():
+    """把浏览器窗口铺满主屏（纯观感，截图尺寸由 ensure_metrics 决定）。
+
+    走 macOS 的 System Events，需要「辅助功能」权限；没授权就静默跳过，不影响走查。
+    授权路径：系统设置 → 隐私与安全性 → 辅助功能 → 勾上运行本脚本的终端 / Claude Code。
+    """
+    if sys.platform != "darwin":
+        return
+    script = '''
+    tell application "Finder" to set b to bounds of window of desktop
+    set scrW to item 3 of b
+    set scrH to item 4 of b
+    tell application "System Events"
+      set procs to (every process whose name contains "Chrome for Testing")
+      if (count of procs) = 0 then return "no-proc"
+      tell item 1 of procs
+        set position of window 1 to {0, 25}
+        set size of window 1 to {scrW, scrH - 25}
+      end tell
+    end tell
+    return "ok"
+    '''
+    try:
+        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=10)
+    except Exception:
+        pass
 
 
 def cmd_keeper(args):
@@ -110,7 +153,7 @@ def cmd_keeper(args):
         with sync_playwright() as p:
             ctx = p.chromium.launch_persistent_context(
                 str(PROFILE), headless=False, viewport=None,
-                args=[f"--remote-debugging-port={PORT}", f"--window-size={WIDTH},{HEIGHT}",
+                args=[f"--remote-debugging-port={PORT}", "--start-maximized",
                       "--disable-session-crashed-bubble", "--hide-crash-restore-bubble"],
                 ignore_default_args=["--enable-automation"])
             print("browser up", file=log, flush=True)
@@ -166,10 +209,66 @@ def connect():
     return p, browser
 
 
+def fill_screen(page):
+    """把窗口铺满主屏可用区（走 CDP 的 Browser.setWindowBounds，不需要系统辅助权限）。
+
+    每条命令都会经过这里，但只在窗口明显小于屏幕时动手，避免覆盖用户手动调的窗口。
+    """
+    try:
+        aw, ah = page.evaluate("[screen.availWidth, screen.availHeight]")
+        cdp = page.context.new_cdp_session(page)
+        wid = cdp.send("Browser.getWindowForTarget")["windowId"]
+        b = cdp.send("Browser.getWindowBounds", {"windowId": wid})["bounds"]
+        if b.get("width", 0) >= aw - 40 and b.get("height", 0) >= ah - 80:
+            return  # 已基本铺满，不动
+        if b.get("windowState") != "normal":
+            cdp.send("Browser.setWindowBounds",
+                     {"windowId": wid, "bounds": {"windowState": "normal"}})
+        # 只调尺寸不动 left/top：窗口在哪块屏就铺满哪块屏，不要把它挪去主屏
+        # （availWidth/availHeight 是页面所在屏幕的可用区，天然按当前屏取值）
+        cdp.send("Browser.setWindowBounds",
+                 {"windowId": wid, "bounds": {"width": aw, "height": ah}})
+        page.wait_for_timeout(400)
+    except Exception:
+        pass
+
+
+def ensure_metrics(page):
+    """把渲染视口撑到 WIDTH×HEIGHT。
+
+    物理窗口受屏幕尺寸限制（笔记本屏往往只有 1400 多逻辑像素宽），直接开大窗口会被系统裁掉，
+    导致工作台的筛选区、子表页签被压到屏幕外，走查时整块漏内容。这里用 CDP 覆盖渲染尺寸：
+    窗口还是那么大，但页面按 WIDTH×HEIGHT 布局，截图也是这个尺寸，一屏能装下的内容更多。
+    deviceScaleFactor=2 保证截图在高分屏下依旧清晰。
+    """
+    fill_screen(page)
+
+    w, h = WIDTH, HEIGHT
+    if not (w and h):
+        # 自适应：窗口本身够宽（大屏最大化）就按真实尺寸截，不做任何干预；
+        # 窗口偏小（小屏，或 Chrome 把可用屏幕识别得很小）才撑到 MIN_W×MIN_H。
+        try:
+            real = page.evaluate("[innerWidth, innerHeight]")
+        except Exception:
+            return
+        if real[0] >= MIN_W and real[1] >= MIN_H:
+            return
+        w, h = max(real[0], MIN_W), max(real[1], MIN_H)
+    try:
+        cdp = page.context.new_cdp_session(page)
+        cdp.send("Emulation.setDeviceMetricsOverride", {
+            "width": w, "height": h,
+            "deviceScaleFactor": 2, "mobile": False,
+        })
+    except Exception:
+        pass  # 覆盖失败就按真实窗口走，不阻断走查
+
+
 def run(fn):
     p, browser = connect()
     try:
         page, pages = get_page(browser)
+        ensure_metrics(page)
         fn(page, pages)
         state = read_state()
         try:

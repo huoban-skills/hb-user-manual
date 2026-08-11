@@ -90,6 +90,7 @@ python3 scripts/digest.py --dir <采集目录> --tables "本章的表,逗号分�
    - 字段类型名以 `hac table field-config list-types` 为准，不凭印象写。
 3. **浏览器走查 + 截图**，全按 [references/walkthrough-guide.md](references/walkthrough-guide.md) 执行：先从摘要包推导本单元的截图点位清单，再按「看 → 动 → 看 → 截」循环走查。截图存 `<产出目录>/images/`，界面观察记 `notes.md`，落的演示数据登记 `demo-data.md`。
 4. **写本单元 Markdown**：规范全按 [references/writing-guide.md](references/writing-guide.md)，含配图规范。图放进它对应的步骤条目里（列表项下缩进 4 空格），用相对路径引用。
+5. **渲染 HTML 预览**：`python3 scripts/render.py <文档.md>`，同目录出同名 .html。md 是源文件，人工修改改 md，改完重跑一次；html 只当预览不手改。
 
 一个单元写完再进下一个；上一单元的深查 JSON 和走查细节不带进下一单元上下文。
 
@@ -117,6 +118,12 @@ python3 scripts/digest.py --dir <采集目录> --tables "本章的表,逗号分�
 
 ```bash
 python3 scripts/digest.py --dir <采集目录> --tables "表名A,表名B"   # 表名或 table_id 混用均可
+```
+
+**render.py**：Markdown → Linear 浅色皮肤 HTML 预览，零依赖零 token。md 的写法约定（缩进图片挂步骤、#### 问句渲染成折叠块、注意事项标题下的列表渲染成提示框）见脚本头注释。
+
+```bash
+python3 scripts/render.py <文档.md>    # 同目录出同名 .html
 ```
 
 **browser.py**：浏览器走查驱动。
@@ -151,8 +158,10 @@ python3 scripts/digest.py --dir <采集目录> --tables "表名A,表名B"   # �
 
 ```
 <模块名或主题>/
-├── <模块名>.md      # 成册手册（有才出）
+├── <模块名>.md      # 成册手册（有才出）；源文件，人工修改改这份
+├── <模块名>.html    # 预览产物，scripts/render.py 从 md 渲染，改完 md 重跑
 ├── <篇名A>.md       # 单篇文档，篇名用读者要做的事命名（如「如何设置到期提醒」）
+├── <篇名A>.html
 ├── images/          # 截图，<章节号或篇序号>-<序号>-<短说明>.png
 ├── notes.md         # 实测笔记（交付时可删）
 └── demo-data.md     # 演示数据登记（清理完可删）

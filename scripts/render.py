@@ -126,6 +126,19 @@ def is_tall(src: str, base: Path) -> bool:
     return False
 
 
+def table_html(rows) -> str:
+    if len(rows) >= 2 and set("".join(rows[1])) <= set("-: "):
+        head, body = rows[0], rows[2:]
+    else:
+        head, body = rows[0], rows[1:]
+    cells = "".join(f"<th>{inline(c)}</th>" for c in head)
+    out = [f"<table><thead><tr>{cells}</tr></thead><tbody>"]
+    for r in body:
+        out.append("<tr>" + "".join(f"<td>{inline(c)}</td>" for c in r) + "</tr>")
+    out.append("</tbody></table>")
+    return "".join(out)
+
+
 def figure_html(alt: str, src: str, base: Path) -> str:
     cls = ' class="tall"' if is_tall(src, base) else ""
     return (f'<figure{cls}><img src="{src}" alt="{ihtml.escape(alt)}">'
@@ -205,29 +218,48 @@ def render(md: str, base: Path) -> str:
             while i < n and lines[i].lstrip().startswith("|"):
                 rows.append([c.strip() for c in lines[i].strip().strip("|").split("|")])
                 i += 1
-            if len(rows) >= 2 and set("".join(rows[1])) <= set("-: "):
-                head, body = rows[0], rows[2:]
-            else:
-                head, body = rows[0], rows[1:]
-            out.append("<table><thead><tr>" + "".join(f"<th>{inline(c)}</th>" for c in head) + "</tr></thead><tbody>")
-            for r in body:
-                out.append("<tr>" + "".join(f"<td>{inline(c)}</td>" for c in r) + "</tr>")
-            out.append("</tbody></table>")
+            out.append(table_html(rows))
             continue
 
-        # 有序列表（缩进 4 空格的图片/段落挂进对应条目）
+        # 有序列表（缩进 4 空格的图片/表格/代码块/段落挂进对应条目）
         if re.match(r"^\d+\.\s+", line):
             out.append('<ol class="steps">')
             while i < n:
                 m2 = re.match(r"^\d+\.\s+(.*)$", lines[i])
                 if not m2:
-                    if not lines[i].strip() and i + 1 < n and re.match(r"^\d+\.\s+", lines[i + 1]):
-                        i += 1
-                        continue
                     break
                 item = [f"<li>{inline(m2.group(1))}"]
                 i += 1
-                while i < n and lines[i].startswith("    ") and lines[i].strip():
+                while i < n:
+                    # 空行不代表条目结束：往后看还有缩进内容就继续挂
+                    if not lines[i].strip():
+                        j = i + 1
+                        while j < n and not lines[j].strip():
+                            j += 1
+                        if j < n and lines[j].startswith("    "):
+                            i = j
+                            continue
+                        i = j
+                        break
+                    if not lines[i].startswith("    "):
+                        break
+                    body = lines[i][4:]
+                    if body.startswith("```"):
+                        i += 1
+                        buf = []
+                        while i < n and not lines[i].strip().startswith("```"):
+                            buf.append(lines[i][4:] if lines[i].startswith("    ") else lines[i])
+                            i += 1
+                        i += 1
+                        item.append("<pre><code>" + ihtml.escape("\n".join(buf)) + "</code></pre>")
+                        continue
+                    if body.lstrip().startswith("|"):
+                        rows = []
+                        while i < n and lines[i].strip().startswith("|"):
+                            rows.append([c.strip() for c in lines[i].strip().strip("|").split("|")])
+                            i += 1
+                        item.append(table_html(rows))
+                        continue
                     im = IMG_RE.match(lines[i])
                     if im:
                         item.append(figure_html(im.group(1), im.group(2), base))

@@ -78,12 +78,12 @@ python3 scripts/browser.py shot --path <scratch>/probe-bottom.png
 `shot --highlight` / `--mask` 靠 CSS selector，控制台类 SPA 的随机 class 匹配不上，这时用 `scripts/annotate.py` 按百分比坐标画。
 
 ```bash
-python3 scripts/annotate.py <图> --grid                        # 先叠网格量位置
-python3 scripts/annotate.py <图> --crop 10,80 --box 2,30,55,38 --fill 22,32,53,36
+python3 scripts/annotate.py <图> --crop 10,75 --grid              # 先量
+python3 scripts/annotate.py <图> --crop 10,75 --box 14,36,73,44 --fill 85,0,100,7
 ```
 
-- **位置要量不要估。** 先用 `--grid` 叠一层百分比网格读坐标，凭肉眼估比例基本每次都偏。
-- 顺序固定「打码 → 裁剪 → 画框」，框的百分比按裁剪后的成图算；先画后裁会整体错位。
+- **位置要量不要估。** 先用 `--grid` 叠一层百分比网格读坐标，凭肉眼估比例基本每次都偏。没量过就画框脚本会直接报错拦下。
+- **`--grid` 和画框要用同一个 `--crop`。** 所有百分比都相对裁剪后的成图，量到什么填什么；裁剪一变坐标全错位，脚本会拦。
 - 脚本会自动把原图备份成 `<图名>.orig.png`，标错了能重来。交付前连同 `.grid.png` 一起清掉。
 - 外部平台的账号名、UID、密钥、实例地址用 `--fill` 遮掉；地域、产品名、规格这些该露的别遮，它们正是要教读者填的。
 

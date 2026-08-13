@@ -131,11 +131,11 @@ python3 scripts/digest.py --dir <采集目录> --tables "表名A,表名B"   # �
 python3 scripts/render.py <文档.md>    # 同目录出同名 .html
 ```
 
-**annotate.py**：给截图打码、标红框、裁剪，位置按百分比给。控制台类 SPA 的 class 是随机哈希，`browser.py` 的 `--mask` / `--highlight` 选择器匹配不上时用它。标之前先 `--grid` 叠网格量位置，别估。
+**annotate.py**：给截图打码、标红框、裁剪，位置按百分比给。控制台类 SPA 的 class 是随机哈希，`browser.py` 的 `--mask` / `--highlight` 选择器匹配不上时用它。坐标全部相对裁剪后的成图；没先 `--grid` 量过就画框会直接报错。
 
 ```bash
-python3 scripts/annotate.py <图> --grid                        # 先量
-python3 scripts/annotate.py <图> --crop 10,80 --box 2,30,55,38 --fill 22,32,53,36
+python3 scripts/annotate.py <图> --crop 10,75 --grid              # 先量
+python3 scripts/annotate.py <图> --crop 10,75 --box 14,36,73,44 --fill 85,0,100,7
 ```
 
 **browser.py**：浏览器走查驱动。

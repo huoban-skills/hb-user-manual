@@ -411,7 +411,7 @@ HIGHLIGHT_ON = """
 """
 HIGHLIGHT_OFF = "() => { const b = document.getElementById('__hbHl'); if (b) b.remove(); }"
 
-# 打码：在元素上盖不透明块，用于密钥、手机号等不能入图的值
+# 不可逆遮挡：在元素上盖不透明块，只用于密钥、令牌、密码等不能入图的秘密
 MASK_ON = """
 (sels) => {
   const box = document.createElement('div');
@@ -432,6 +432,26 @@ MASK_ON = """
 }
 """
 MASK_OFF = "() => { const b = document.getElementById('__hbMask'); if (b) b.remove(); }"
+
+# 模糊脱敏：保留字段和数据行的形态，用于姓名、手机号、企业名称、地址等普通敏感文字
+BLUR_ON = """
+(sels) => {
+  const box = document.createElement('div');
+  box.id = '__hbBlur';
+  box.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483645';
+  sels.forEach(s => document.querySelectorAll(s).forEach(el => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;
+    const m = document.createElement('div');
+    m.style.cssText = `position:absolute;left:${r.left}px;top:${r.top}px;` +
+      `width:${r.width}px;height:${r.height}px;backdrop-filter:blur(10px);` +
+      '-webkit-backdrop-filter:blur(10px);background:rgba(255,255,255,.08);';
+    box.appendChild(m);
+  }));
+  document.body.appendChild(box);
+}
+"""
+BLUR_OFF = "() => { const b = document.getElementById('__hbBlur'); if (b) b.remove(); }"
 
 
 def cmd_shot(args):
@@ -457,13 +477,16 @@ def cmd_shot(args):
         if args.prep_after:
             print("prep_after:", page.evaluate(args.prep_after))
             page.wait_for_timeout(400)
+        blurs = [s for s in (args.blur or "").split(",,") if s]
+        if blurs:
+            page.evaluate(BLUR_ON, blurs)
         masks = [s for s in (args.mask or "").split(",,") if s]
         if masks:
             page.evaluate(MASK_ON, masks)
         sels = [s for s in (args.highlight or "").split(",,") if s]
         if sels:
             page.evaluate(HIGHLIGHT_ON, sels)
-        if masks or sels:
+        if blurs or masks or sels:
             page.wait_for_timeout(200)
         path = Path(args.path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -475,6 +498,8 @@ def cmd_shot(args):
             page.evaluate(HIGHLIGHT_OFF)
         if masks:
             page.evaluate(MASK_OFF)
+        if blurs:
+            page.evaluate(BLUR_OFF)
         print(f"已截图：{path}（{path.stat().st_size // 1024} KB）")
     run(fn)
 
@@ -521,7 +546,8 @@ def main():
     s = sub.add_parser("shot")
     s.add_argument("--path", required=True); s.add_argument("--selector")
     s.add_argument("--highlight", help="要标红框的 CSS 选择器，多个用 ,, 分隔")
-    s.add_argument("--mask", help="要打码遮住的 CSS 选择器（密钥、手机号等），多个用 ,, 分隔")
+    s.add_argument("--blur", help="要模糊脱敏的 CSS 选择器（姓名、手机号、企业名称、地址等），多个用 ,, 分隔")
+    s.add_argument("--mask", help="要不可逆遮挡的 CSS 选择器（密钥、令牌、密码等），多个用 ,, 分隔")
     s.add_argument("--prep", help="截图前在同一次调用里执行的 JS，用来展开下拉/悬停菜单等瞬时界面")
     s.add_argument("--prep-wait", type=int, default=1200, help="prep 执行后等待毫秒数")
     s.add_argument("--prep-hover", help="prep 之后用真实鼠标悬停到该 CSS 选择器，用于展开二级菜单")

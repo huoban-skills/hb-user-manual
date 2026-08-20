@@ -1,4 +1,4 @@
-"""给截图打码、标红框、裁剪，位置按百分比给。
+"""给截图模糊脱敏、不可逆遮挡、标红框和裁剪，位置按百分比给。
 
 browser.py 的 --mask / --highlight 靠 CSS selector，控制台类 SPA（阿里云、
 腾讯云等）的 class 是随机哈希，选择器匹配不上，这时改用本脚本按比例坐标画。
@@ -8,8 +8,15 @@ browser.py 的 --mask / --highlight 靠 CSS selector，控制台类 SPA（阿里
     # 1. 量：带上最终要用的 --crop，出一张带百分比网格的图，从上面读坐标
     python3 scripts/annotate.py shot.png --crop 10,75 --grid
 
-    # 2. 画：--crop 必须和量的时候一致，坐标直接用刚读出来的
-    python3 scripts/annotate.py shot.png --crop 10,75 --box 14,36,73,44 --fill 85,0,100,7
+    # 2. 画：普通敏感文字用 --blur；密钥、令牌等秘密才用 --fill
+    python3 scripts/annotate.py shot.png --crop 10,75 \
+      --box 14,36,73,44 --blur 10,20,45,28 --fill 85,0,100,7
+
+`--blur` 坐标应贴合敏感字符本身，只留极小余量；不要框整个输入框或整格单元格。
+单行值只框字形高度，多行值按实际渲染行重复写多个窄 `--blur`；相邻字段、相邻记录
+也分别框选。选区与字段名、列名、提示文案之间必须保留清晰空隙，空值不打码。
+原尺寸复看若只在下沿或末尾漏出笔画，只向下或向末尾补选区，不要向字段名方向扩大。
+`--blur-radius` 只调模糊强度，不能弥补选区过大或错位。
 
 所有百分比都相对**裁剪后的成图**，量到什么就填什么，不用换算。
 原图自动备份成 <图名>.orig.png，标错了重跑即可。交付前清掉 .orig.png 和 .grid.png。
@@ -18,7 +25,7 @@ import json
 import os
 import sys
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 RED = "#E1251B"
 MASK = "#DDDDDD"
@@ -64,9 +71,14 @@ def grid(path, crop):
     return out
 
 
-def annotate(path, boxes, fills, crop):
+def annotate(path, boxes, fills, blurs, crop, blur_radius=None):
     im = _load(path, crop)
     w, h = im.size
+    radius = blur_radius if blur_radius is not None else max(10, round(w / 90))
+    for b in blurs:
+        rect = tuple(int(v) for v in _rect(b, w, h))
+        region = im.crop(rect).filter(ImageFilter.GaussianBlur(radius=radius))
+        im.paste(region, rect)
     d = ImageDraw.Draw(im)
     for f in fills:
         d.rectangle(_rect(f, w, h), fill=MASK)
@@ -104,7 +116,9 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     if not args:
         sys.exit(__doc__)
-    path, boxes, fills, crop, want_grid = args[0], [], [], None, False
+    path, boxes, fills, blurs, crop, blur_radius, want_grid = (
+        args[0], [], [], [], None, None, False
+    )
     i = 1
     while i < len(args):
         if args[i] == "--grid":
@@ -113,6 +127,10 @@ if __name__ == "__main__":
             boxes.append(_nums(args[i + 1])); i += 2
         elif args[i] == "--fill":
             fills.append(_nums(args[i + 1])); i += 2
+        elif args[i] == "--blur":
+            blurs.append(_nums(args[i + 1])); i += 2
+        elif args[i] == "--blur-radius":
+            blur_radius = float(args[i + 1]); i += 2
         elif args[i] == "--crop":
             crop = _nums(args[i + 1]); i += 2
         else:
@@ -121,6 +139,6 @@ if __name__ == "__main__":
     if want_grid:
         print(grid(path, crop))
     else:
-        if boxes or fills:
+        if boxes or fills or blurs:
             check_measured(path, crop)
-        print(path, annotate(path, boxes, fills, crop))
+        print(path, annotate(path, boxes, fills, blurs, crop, blur_radius))

@@ -4,6 +4,9 @@
 用法：
   python3 render.py <文档.md> [输出.html]      # 省略输出则同名 .html
 
+渲染后自动跑格式机检（章序号连续、小节编号对齐、图号图注格式、步骤序号、
+图片相对路径且存在），有问题逐条打印并以退出码 2 结束；机检规则见 check()。
+
 Markdown 约定（与 writing-guide 一致，只认这些）：
   # 标题            册头/篇名；紧随其后的第一段渲染为导语，自动插目录
   ## 一、章节名      二级章节，自动进目录
@@ -44,7 +47,7 @@ h3{font-size:15px;font-weight:650;margin:34px 0 12px}
 h3 .sn{color:var(--brand);font-weight:650;margin-right:7px}
 nav.toc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 24px;margin:0 0 8px}
 nav.toc .toc-title{font-size:12px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px}
-nav.toc ol{margin:0;padding-left:20px}
+nav.toc ul{margin:0;padding-left:0;list-style:none}
 nav.toc li{margin:3px 0}
 nav.toc a{color:var(--ink-2);text-decoration:none}
 nav.toc a:hover{color:var(--brand)}
@@ -92,6 +95,107 @@ if(toc){document.querySelectorAll('h2[id]').forEach(h=>{
 """
 
 IMG_RE = re.compile(r"^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$")
+
+CN_NUM = "零一二三四五六七八九"
+
+
+def cn2int(s: str):
+    """中文数字转 int（一 ~ 九十九），非法返回 None。"""
+    if not s or any(c not in CN_NUM + "十" for c in s):
+        return None
+    if s == "十":
+        return 10
+    if "十" in s:
+        a, _, b = s.partition("十")
+        return (CN_NUM.index(a) if a else 1) * 10 + (CN_NUM.index(b) if b else 0)
+    return CN_NUM.index(s)
+
+
+def check(md: str, base: Path) -> list:
+    """格式机检：章序号、小节编号、图号图注、步骤序号。返回问题列表（空即通过）。
+
+    规则（与 writing-guide 一致）：
+      章标题  ## 一、名称        中文序号 + 顿号，顺序连续
+      小节    ### 1.2 名称       数字编号，章号对齐、节号从 1 连续
+      图注    ![图 2-3：说明]     图号章内从 1 连续，图注非空，文件存在且相对路径
+      步骤    1. 2. 3.           每个列表块内从 1 连续
+    """
+    probs: list = []
+    h1_count = 0
+    ch = 0            # 当前章序号（int）
+    minor = 0         # 当前章内小节号
+    fig = 0           # 当前章内图号
+    step_expect = 0   # 当前步骤块的下一个期望序号；0 = 不在步骤块里
+    in_code = False
+
+    for ln, raw in enumerate(md.splitlines(), 1):
+        line = raw.rstrip()
+        if line.lstrip().startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
+
+        m = re.match(r"^(#{1,4})\s+(.*)$", line)
+        if m:
+            step_expect = 0
+            level, title = len(m.group(1)), m.group(2).strip()
+            if level == 1:
+                h1_count += 1
+                if h1_count > 1:
+                    probs.append(f"行{ln}: 出现第二个一级标题「{title}」，一册只允许一个")
+            elif level == 2:
+                mm = re.match(r"^([一二三四五六七八九十]+)、(\S.*)$", title)
+                if not mm:
+                    probs.append(f"行{ln}: 章标题「{title}」应为「一、名称」格式（中文序号+顿号，顿号后不留空格）")
+                    ch += 1
+                else:
+                    num = cn2int(mm.group(1))
+                    if num != ch + 1:
+                        probs.append(f"行{ln}: 章序号「{mm.group(1)}、」不连续，期望第 {ch + 1} 章")
+                    ch = num if num else ch + 1
+                minor = fig = 0
+            elif level == 3:
+                mm = re.match(r"^(\d+)\.(\d+)\s+(\S.*)$", title)
+                if not mm:
+                    probs.append(f"行{ln}: 小节标题「{title}」应为「{ch}.{minor + 1} 名称」格式（数字编号+空格）")
+                else:
+                    if int(mm.group(1)) != ch:
+                        probs.append(f"行{ln}: 小节「{title}」章号 {mm.group(1)} 与所在章（第 {ch} 章）不符")
+                    if int(mm.group(2)) != minor + 1:
+                        probs.append(f"行{ln}: 小节号「{mm.group(1)}.{mm.group(2)}」不连续，期望 {ch}.{minor + 1}")
+                    minor = int(mm.group(2))
+            continue
+
+        im = IMG_RE.match(line)
+        if im:
+            alt, src = im.group(1), im.group(2)
+            mm = re.match(r"^图 (\d+)-(\d+)：(\S.*)$", alt)
+            if not mm:
+                probs.append(f"行{ln}: 图注「{alt}」应为「图 {ch}-{fig + 1}：说明」格式（半角空格、全角冒号、说明非空）")
+            else:
+                if int(mm.group(1)) != ch:
+                    probs.append(f"行{ln}: 图号「{mm.group(1)}-{mm.group(2)}」章号与所在章（第 {ch} 章）不符")
+                if int(mm.group(2)) != fig + 1:
+                    probs.append(f"行{ln}: 图号「{mm.group(1)}-{mm.group(2)}」不连续，期望 图 {ch}-{fig + 1}")
+                fig = int(mm.group(2)) if mm else fig + 1
+            if src.startswith(("/", "http://", "https://")):
+                probs.append(f"行{ln}: 图片「{src}」必须用相对路径（images/…）")
+            elif not (base / src).exists():
+                probs.append(f"行{ln}: 图片文件不存在：{src}")
+            continue
+
+        sm = re.match(r"^(\d+)\.\s+", line)
+        if sm:
+            if step_expect == 0:
+                step_expect = 1
+            if int(sm.group(1)) != step_expect:
+                probs.append(f"行{ln}: 步骤序号 {sm.group(1)}. 不连续，期望 {step_expect}.")
+            step_expect = int(sm.group(1)) + 1
+        elif line.strip() and not line.startswith("    "):
+            step_expect = 0
+
+    return probs
 
 
 def inline(text: str) -> str:
@@ -190,7 +294,8 @@ def render(md: str, base: Path) -> str:
                 if i < n and not lines[i].startswith("#"):
                     out.append(f'<p class="intro">{inline(lines[i].strip())}</p>')
                     i += 1
-                out.append('<nav class="toc"><div class="toc-title">目录</div><ol id="toc"></ol></nav>')
+                # 目录不自带编号：章标题已含「一、二、」，再套 ol 会双重序号
+                out.append('<nav class="toc"><div class="toc-title">目录</div><ul id="toc"></ul></nav>')
                 continue
             if level == 2:
                 close_faq()
@@ -326,8 +431,16 @@ def main():
         sys.exit(__doc__)
     src = Path(sys.argv[1])
     dst = Path(sys.argv[2]) if len(sys.argv) > 2 else src.with_suffix(".html")
-    dst.write_text(render(src.read_text(encoding="utf-8"), src.parent), encoding="utf-8")
+    md = src.read_text(encoding="utf-8")
+    dst.write_text(render(md, src.parent), encoding="utf-8")
     print(f"已渲染：{dst}")
+    probs = check(md, src.parent)
+    if probs:
+        print(f"× 格式机检 {len(probs)} 处问题：")
+        for p in probs:
+            print(f"  {p}")
+        sys.exit(2)
+    print("✓ 格式机检通过（章序号、小节编号、图号图注、步骤序号）")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 ---
-name: hb-user-manual
+name: huoban-user-manual
 description: >
   用浏览器实测伙伴云系统并截图，生成图文手册（Markdown + 图片目录），一次一本：
   使用手册（面向业务操作者）或配置手册（面向管理员，讲配置在哪、为什么、改了影响什么）。

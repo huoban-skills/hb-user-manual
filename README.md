@@ -1,4 +1,4 @@
-# hb-user-manual
+# huoban-user-manual
 
 伙伴云图文手册生成 Skill（浏览器实测版）：用浏览器实际操作伙伴云系统，走查截图并撰写图文文档，产物为 Markdown + 图片目录。
 

@@ -391,21 +391,38 @@ def cmd_wait(args):
     run(fn)
 
 
-# 用浮层画框，不改元素自身样式：outline 会被祖先的 overflow:hidden 裁掉
+# 用浮层画框，不改元素自身样式：outline 会被祖先的 overflow:hidden 裁掉。
+# 多个框时按选择器传入顺序在框左上角标序号角标（传入顺序=步骤顺序）；单框不标。
+# 序号的含义写在文档步骤文字里，不写进图内。
 HIGHLIGHT_ON = """
 (sels) => {
   const box = document.createElement('div');
   box.id = '__hbHl';
   box.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647';
+  const rects = [];
   sels.forEach(s => document.querySelectorAll(s).forEach(el => {
     const r = el.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) return;
-    const m = document.createElement('div');
-    m.style.cssText = `position:absolute;left:${r.left - 3}px;top:${r.top - 3}px;` +
-      `width:${r.width + 6}px;height:${r.height + 6}px;` +
-      'border:3px solid #f5222d;border-radius:6px;box-sizing:border-box';
-    box.appendChild(m);
+    rects.push(r);
   }));
+  rects.forEach((r, i) => {
+    // 柔和描边样式：珊瑚色圆角框 + 白色外圈 + 轻投影
+    const m = document.createElement('div');
+    m.style.cssText = `position:absolute;left:${r.left - 4}px;top:${r.top - 4}px;` +
+      `width:${r.width + 8}px;height:${r.height + 8}px;` +
+      'border:3px solid #D97757;border-radius:10px;box-sizing:border-box;' +
+      'box-shadow:0 0 0 3px #fff, 2px 3px 6px rgba(31,35,41,.4), inset 0 0 0 2px #fff';
+    box.appendChild(m);
+    if (rects.length > 1) {
+      const b = document.createElement('div');
+      b.style.cssText = `position:absolute;left:${r.left - 15}px;top:${r.top - 15}px;` +
+        'width:22px;height:22px;border-radius:50%;background:#D97757;color:#fff;' +
+        'box-shadow:0 0 0 2px #fff;display:flex;align-items:center;justify-content:center;' +
+        'font:bold 13px -apple-system,sans-serif';
+      b.textContent = String(i + 1);
+      box.appendChild(b);
+    }
+  });
   document.body.appendChild(box);
 }
 """
@@ -545,14 +562,14 @@ def main():
     s.add_argument("--timeout", type=int, default=15000); s.set_defaults(fn=cmd_wait)
     s = sub.add_parser("shot")
     s.add_argument("--path", required=True); s.add_argument("--selector")
-    s.add_argument("--highlight", help="要标红框的 CSS 选择器，多个用 ,, 分隔")
+    s.add_argument("--highlight", help="要画标注框的 CSS 选择器，多个用 ,, 分隔（多框按传入顺序自动标序号）")
     s.add_argument("--blur", help="要模糊脱敏的 CSS 选择器（姓名、手机号、企业名称、地址等），多个用 ,, 分隔")
     s.add_argument("--mask", help="要不可逆遮挡的 CSS 选择器（密钥、令牌、密码等），多个用 ,, 分隔")
     s.add_argument("--prep", help="截图前在同一次调用里执行的 JS，用来展开下拉/悬停菜单等瞬时界面")
     s.add_argument("--prep-wait", type=int, default=1200, help="prep 执行后等待毫秒数")
     s.add_argument("--prep-hover", help="prep 之后用真实鼠标悬停到该 CSS 选择器，用于展开二级菜单")
     s.add_argument("--prep-mouse", help="prep 之后依次移动真实鼠标到这些视口坐标，形如 320,385;700,500")
-    s.add_argument("--prep-after", help="鼠标移动之后再执行的 JS，通常用来给要标红框的元素打标记")
+    s.add_argument("--prep-after", help="鼠标移动之后再执行的 JS，通常用来给要画标注框的元素打标记")
     s.add_argument("--full-page", action="store_true"); s.set_defaults(fn=cmd_shot)
     s = sub.add_parser("eval"); s.add_argument("--js", required=True); s.set_defaults(fn=cmd_eval)
     s = sub.add_parser("stop"); s.set_defaults(fn=cmd_stop)

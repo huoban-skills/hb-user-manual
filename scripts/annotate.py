@@ -1,4 +1,4 @@
-"""给截图模糊脱敏、不可逆遮挡、标红框和裁剪，位置按百分比给。
+"""给截图模糊脱敏、不可逆遮挡、画标注框和裁剪，位置按百分比给。
 
 browser.py 的 --mask / --highlight 靠 CSS selector，控制台类 SPA（阿里云、
 腾讯云等）的 class 是随机哈希，选择器匹配不上，这时改用本脚本按比例坐标画。
@@ -12,11 +12,9 @@ browser.py 的 --mask / --highlight 靠 CSS selector，控制台类 SPA（阿里
     python3 scripts/annotate.py shot.png --crop 10,75 \
       --box 14,36,73,44 --blur 10,20,45,28 --fill 85,0,100,7
 
-`--blur` 坐标应贴合敏感字符本身，只留极小余量；不要框整个输入框或整格单元格。
-单行值只框字形高度，多行值按实际渲染行重复写多个窄 `--blur`；相邻字段、相邻记录
-也分别框选。选区与字段名、列名、提示文案之间必须保留清晰空隙，空值不打码。
-原尺寸复看若只在下沿或末尾漏出笔画，只向下或向末尾补选区，不要向字段名方向扩大。
-`--blur-radius` 只调模糊强度，不能弥补选区过大或错位。
+`--box` 传入多个时按传入顺序在框左上角自动画 ①②③ 序号角标（单框不画）。
+何时画框、选区怎么取、脱敏怎么复检，标准都在 references/walkthrough-guide.md
+第四、五节，本脚本只管执行。`--blur-radius` 只调模糊强度，不弥补选区错位。
 
 所有百分比都相对**裁剪后的成图**，量到什么就填什么，不用换算。
 原图自动备份成 <图名>.orig.png，标错了重跑即可。交付前清掉 .orig.png 和 .grid.png。
@@ -25,10 +23,24 @@ import json
 import os
 import sys
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-RED = "#E1251B"
+ACCENT = "#D97757"   # 标注框珊瑚色：白边圆角描边，在蓝色系界面上醒目不刺眼
+SHADOW = (31, 35, 41, 110)
 MASK = "#DDDDDD"
+
+
+def _font(size):
+    for cand in (
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ):
+        try:
+            return ImageFont.truetype(cand, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
 
 
 def _stem(path):
@@ -82,8 +94,37 @@ def annotate(path, boxes, fills, blurs, crop, blur_radius=None):
     d = ImageDraw.Draw(im)
     for f in fills:
         d.rectangle(_rect(f, w, h), fill=MASK)
-    for b in boxes:
-        d.rectangle(_rect(b, w, h), outline=RED, width=max(2, w // 500))
+
+    if boxes:
+        # 柔和描边样式：投影 → 白色外圈 → 珊瑚色圆角框 → 序号角标
+        lw = max(3, w // 400)
+        corner = max(8, w // 120)
+        base = im.convert("RGBA")
+        shadow = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        sd = ImageDraw.Draw(shadow)
+        for b in boxes:
+            r = _rect(b, w, h)
+            sd.rounded_rectangle([r[0] + 2, r[1] + 3, r[2] + 2, r[3] + 3],
+                                 radius=corner, outline=SHADOW, width=lw + 2)
+        base = Image.alpha_composite(base, shadow.filter(ImageFilter.GaussianBlur(3)))
+        d = ImageDraw.Draw(base)
+        for i, b in enumerate(boxes):
+            r = _rect(b, w, h)
+            d.rounded_rectangle([r[0] - lw, r[1] - lw, r[2] + lw, r[3] + lw],
+                                radius=corner + lw, outline="#ffffff", width=lw + 2)
+            d.rounded_rectangle(r, radius=corner, outline=ACCENT, width=lw)
+            if len(boxes) > 1:
+                # 多框按传入顺序标序号角标，贴框左上角；含义写在步骤文字里
+                br = max(12, w // 110)
+                cx, cy = r[0], r[1]
+                d.ellipse([cx - br - 2, cy - br - 2, cx + br + 2, cy + br + 2], fill="#ffffff")
+                d.ellipse([cx - br, cy - br, cx + br, cy + br], fill=ACCENT)
+                num = str(i + 1)
+                font = _font(int(br * 1.3))
+                tb = d.textbbox((0, 0), num, font=font)
+                d.text((cx - (tb[2] - tb[0]) / 2 - tb[0], cy - (tb[3] - tb[1]) / 2 - tb[1]),
+                       num, fill="#ffffff", font=font)
+        im = base.convert("RGB")
     im.save(path)
     return im.size
 
